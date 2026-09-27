@@ -66,7 +66,7 @@ function createRelay({graceMs = 120000, heartbeatMs = 4000, sweepMs = 1000} = {}
           if(!member)return fail('재접속 정보가 만료되었습니다.');
         } else {
           if(room.members.size>=12)return fail('한 방에는 최대 12명이 참여할 수 있습니다.');
-          member={id:randomBytes(8).toString('hex'),token:randomBytes(24).toString('hex'),name:String(message.name||'멤버').trim().slice(0,20)||'멤버',ready:false,rtt:0};
+          member={id:randomBytes(8).toString('hex'),token:randomBytes(24).toString('hex'),name:typeof message.name==='string'?(message.name.trim().slice(0,20)||'멤버'):'멤버',ready:false,rtt:0};
           room.members.set(member.id,member);
           if(message.type==='create')room.hostId=member.id;
         }
@@ -130,3 +130,4 @@ if(require.main===module) {
   const shutdown=()=>relay.close().then(()=>process.exit(0));process.on('SIGINT',shutdown);process.on('SIGTERM',shutdown);
 }
 module.exports={createRelay};
+
