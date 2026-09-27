@@ -1,0 +1,61 @@
+name: Build Android APK
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - mobile-source.json
+      - .github/workflows/android-build.yml
+permissions:
+  contents: read
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      CI: "1"
+      EXPO_NO_TELEMETRY: "1"
+      EXPO_PUBLIC_RELAY_URL: wss://pulse-band-relay.onrender.com/sync
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Restore mobile source
+        run: |
+          node <<'NODE'
+          const fs=require('fs');const path=require('path');
+          const files=JSON.parse(fs.readFileSync('mobile-source.json','utf8'));
+          const root=path.resolve('mobile');fs.mkdirSync(root,{recursive:true});
+          for(const [name,contents] of Object.entries(files)){
+            const dest=path.resolve(root,name);
+            if(!dest.startsWith(root+path.sep))throw Error('Invalid source path');
+            fs.mkdirSync(path.dirname(dest),{recursive:true});fs.writeFileSync(dest,contents);
+          }
+          fs.mkdirSync('mobile/assets',{recursive:true});
+          NODE
+          node mobile/generate-assets.cjs
+      - name: Install dependencies and generate Android project
+        working-directory: mobile
+        run: |
+          npm install --no-audit --no-fund
+          npx expo prebuild --platform android --no-install
+      - name: Build standalone Android ARM64 test APK
+        working-directory: mobile/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon --max-workers=2 -PreactNativeArchitectures=arm64-v8a -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g" --console=plain
+      - name: Prepare installable file
+        run: |
+          mkdir -p dist
+          cp mobile/android/app/build/outputs/apk/release/app-release.apk dist/Pulse-Band-Android-arm64.apk
+          sha256sum dist/Pulse-Band-Android-arm64.apk > dist/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Pulse-Band-Android
+          path: dist/*
+          retention-days: 7
+          if-no-files-found: error
